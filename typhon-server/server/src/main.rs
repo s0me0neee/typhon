@@ -4,7 +4,8 @@ use std::env::{self};
 use tower_http::trace::TraceLayer;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
-mod land_cell;
+mod simulation;
+mod terrain;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,11 +33,7 @@ async fn main() -> Result<()> {
             tracing::error!(?e, "axum died");
         }
     });
-    simulation().await?;
+    simulation::simulation().await?;
     serve.await?;
-    Ok(())
-}
-
-async fn simulation() -> Result<()> {
     Ok(())
 }
