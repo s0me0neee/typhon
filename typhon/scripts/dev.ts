@@ -20,9 +20,18 @@ const rust_log = log_level
 	: {}
 const bun_log = log_level ? { LOG_LEVEL: log_level } : {}
 
-console.log(axum_path)
-console.log(elysia_path)
-// Both run from the repo root so they find conf.toml.
+async function waitFor(url: string, timeoutMs = 120_000) {
+	const start = Date.now()
+	while (Date.now() - start < timeoutMs) {
+		try {
+			const r = await fetch(url)
+			if (r.ok) return
+		} catch {}
+		await Bun.sleep(100)
+	}
+	throw new Error(`timeout: ${url}`)
+}
+
 const axum = Bun.spawn(
 	["cargo", "run", "-p", "server", elysia_port.toString()],
 	{
@@ -33,7 +42,12 @@ const axum = Bun.spawn(
 	},
 )
 
-await Bun.sleep(1500)
+await Promise.race([
+	waitFor(`http://127.0.0.1:${axum_port}/health`),
+	axum.exited.then((c) => {
+		throw new Error(`axum exited ${c}`)
+	}),
+])
 
 const elysia = Bun.spawn(
 	["bun", "run", `${elysia_path}/src/main.ts`, axum_port.toString()],
