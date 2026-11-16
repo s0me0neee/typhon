@@ -1,9 +1,27 @@
 use anyhow::{Ok, Result};
-use axum::{Router, routing::get};
-use std::env::{self};
+use axum::{Json, Router, extract::State, routing::get};
+use std::{
+    env::{self},
+    sync::Arc,
+};
+use terrain::World;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
+
+// ts-rs export path from the module path, e.g. server::sim::war -> sim/war.ts
+macro_rules! ts_file {
+    () => {
+        format!(
+            "{}.ts",
+            module_path!()
+                .split_once("::")
+                .map_or("main", |(_, m)| m)
+                .replace("::", "/")
+        )
+    };
+}
+
 mod simulation;
 mod terrain;
 
@@ -17,9 +35,12 @@ async fn main() -> Result<()> {
         .init();
 
     let port = env::var("PORT")?;
+    let world = Arc::new(World::new(20, 10)?);
     let app = Router::new()
         .route("/", get(|| async { "Hello axum" }))
         .route("/health", get(|| async { "ok" }))
+        .route("/view/world", get(view_world))
+        .with_state(world)
         .layer(TraceLayer::new_for_http());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:".to_string() + &port).await?;
 
@@ -36,4 +57,8 @@ async fn main() -> Result<()> {
     simulation::simulation().await?;
     serve.await?;
     Ok(())
+}
+
+async fn view_world(State(world): State<Arc<World>>) -> Json<Arc<World>> {
+    Json(world)
 }

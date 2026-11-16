@@ -1,5 +1,8 @@
 {
   "name": "@typhon/ui",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "preact": "^11.2.0"
+  }
 }

@@ -1,9 +1,12 @@
-use std::fmt::Display;
-
 use anyhow::{Result, bail};
+use noise::{NoiseFn, Perlin};
+use std::fmt::Display;
 use strum::{EnumIter, IntoEnumIterator};
+use serde::Serialize;
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Copy, EnumIter)]
+#[derive(Debug, Clone, Copy, EnumIter, TS, Serialize)]
+#[ts(export, export_to = ts_file!())]
 pub(crate) enum Biome {
     Plain,
     Water,
@@ -12,13 +15,15 @@ pub(crate) enum Biome {
     Desert,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, TS, Serialize)]
+#[ts(export, export_to = ts_file!())]
 pub(crate) struct Terrain {
     biome: Biome,
     elevation: i32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, TS, Serialize)]
+#[ts(export, export_to = ts_file!())]
 pub(crate) struct LandCell {
     pub(crate) terrain: Terrain,
     pub(crate) u: u32,
@@ -53,7 +58,8 @@ impl LandCell {
  * cord is (u,v)
  */
 
-#[derive(Debug)]
+#[derive(Debug, TS, Serialize)]
+#[ts(export, export_to = ts_file!())]
 pub(crate) struct World {
     cells: Vec<LandCell>,
     width: u32,
@@ -91,7 +97,7 @@ impl Display for World {
 impl World {
     pub fn new(w: u32, h: u32) -> Result<World> {
         if w < 2 || w % 2 != 0 {
-            bail!("World width have to be at least 2, got: {}", w);
+            bail!("World width have to be at least 2 and even, got: {}", w);
         }
 
         if h < 3 {
@@ -99,18 +105,36 @@ impl World {
         }
 
         let mut cells = Vec::with_capacity((w * h) as usize);
-        for u in 0..w {
-            for v in 0..h {
+
+        for v in 0..h {
+            for u in 0..w {
                 cells.push(LandCell::new(u, v));
             }
         }
-        Ok(World {
+
+        let world = World {
             cells,
             width: w,
             height: h,
-        })
+        };
+
+        Ok(world)
     }
+
     fn index(&self, (u, v): (u32, u32)) -> usize {
         (v as usize) * (self.width as usize) + (u as usize)
     }
+}
+
+fn world_gen(world: &mut World, seed: u32) -> Result<()> {
+    let perlin = Perlin::new(seed);
+    let noice: Vec<Vec<f64>> = Vec::with_capacity(world.height as usize);
+    let scale = 0.05;
+    for y in 0..world.height {
+        for x in 0..world.width {
+            let mut v = Vec::with_capacity(world.width as usize);
+            v.push(perlin.get([x as f64 * scale, y as f64 * scale]));
+        }
+    }
+    Ok(())
 }
