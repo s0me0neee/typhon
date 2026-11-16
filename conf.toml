@@ -1,0 +1,2 @@
+axum_port = 8080
+elysia_port = 8050
