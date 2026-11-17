@@ -1,8 +1,9 @@
+use crate::ts_file;
 use anyhow::{Result, bail};
 use noise::{NoiseFn, Perlin};
-use std::fmt::Display;
-use strum::{EnumIter, IntoEnumIterator};
 use serde::Serialize;
+use std::{fmt::Display, ops::Range};
+use strum::{EnumIter, IntoEnumIterator};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Copy, EnumIter, TS, Serialize)]
@@ -19,7 +20,7 @@ pub(crate) enum Biome {
 #[ts(export, export_to = ts_file!())]
 pub(crate) struct Terrain {
     biome: Biome,
-    elevation: i32,
+    elevation: f32,
 }
 
 #[derive(Debug, Clone, Copy, TS, Serialize)]
@@ -37,7 +38,7 @@ impl LandCell {
             .unwrap();
         let terrain = Terrain {
             biome,
-            elevation: rand::random_range(-30..210),
+            elevation: 0.0,
         };
         LandCell { terrain, u, v }
     }
@@ -112,11 +113,19 @@ impl World {
             }
         }
 
-        let world = World {
+        let mut world = World {
             cells,
             width: w,
             height: h,
         };
+
+        let conf = WorldGenConf {
+            elevation_range: -30.0..210.0,
+            perlin_noise_seed: 1,
+            perlin_noise_layers: &[0.03, 0.08, 0.1],
+        };
+
+        world_gen(&mut world, conf)?;
 
         Ok(world)
     }
@@ -126,15 +135,53 @@ impl World {
     }
 }
 
-fn world_gen(world: &mut World, seed: u32) -> Result<()> {
-    let perlin = Perlin::new(seed);
-    let noice: Vec<Vec<f64>> = Vec::with_capacity(world.height as usize);
-    let scale = 0.05;
-    for y in 0..world.height {
-        for x in 0..world.width {
+// ops::Range because serde and ts-rs only support this
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = ts_file!())]
+pub(crate) struct WorldGenConf<'a> {
+    pub(crate) elevation_range: Range<f64>,
+    pub(crate) perlin_noise_seed: u32,
+    pub(crate) perlin_noise_layers: &'a [f32],
+}
+
+fn world_gen(world: &mut World, conf: WorldGenConf) -> Result<()> {
+    let perlin = Perlin::new(conf.perlin_noise_seed);
+
+    let rescale =
+        |r: &Range<f64>, n: f64| -> f64 { r.start + n * (r.end - r.start) };
+
+    for scale in conf.perlin_noise_layers {
+        let mut noise: Vec<Vec<f64>> =
+            Vec::with_capacity(world.height as usize);
+        for y in 0..world.height {
             let mut v = Vec::with_capacity(world.width as usize);
-            v.push(perlin.get([x as f64 * scale, y as f64 * scale]));
+            for x in 0..world.width {
+                let val = perlin
+                    .get([x as f64 * *scale as f64, y as f64 * *scale as f64]);
+                v.push((val + 1.0) / 2.0);
+            }
+            noise.push(v);
+        }
+        for (v, row) in noise.iter().enumerate() {
+            for (u, &val) in row.iter().enumerate() {
+                let i = world.index((u as u32, v as u32));
+                world.cells[i].terrain.elevation =
+                    rescale(&conf.elevation_range, val) as f32;
+            }
         }
     }
+
+    Ok(())
+}
+
+#[test]
+fn world_gen_test() -> Result<()> {
+    let mut world = World::new(30, 15)?;
+    let conf = WorldGenConf {
+        elevation_range: -30.0..210.0,
+        perlin_noise_seed: 1,
+        perlin_noise_layers: &[0.1, 0.2, 0.3],
+    };
+    world_gen(&mut world, conf)?;
     Ok(())
 }

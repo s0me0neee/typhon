@@ -1,15 +1,29 @@
-use anyhow::Result;
+use serde::Serialize;
+use ts_rs::TS;
 
 use crate::terrain::World;
+use crate::ts_file;
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = ts_file!())]
+pub struct Status {
+    pub year: u32,
+}
 
 #[derive(Debug)]
 pub struct Simulation {
-    year: u32,
-    world: crate::terrain::World,
+    pub(crate) year: u32,
+    pub(crate) world: crate::terrain::World,
 }
 
-pub async fn simulation() -> Result<()> {
-    let world = World::new(20, 10)?;
-    println!("{}", world);
-    Ok(())
+impl Simulation {
+    pub fn new(world: World) -> Simulation {
+        Simulation { year: 0, world }
+    }
+    pub fn step(&mut self) {
+        self.year += 1;
+    }
+    pub fn status(&self) -> Status {
+        Status { year: self.year }
+    }
 }
