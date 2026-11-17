@@ -31,11 +31,10 @@ const COLOR: Record<Biome, string> = {
 	Hill: "#a08a62",
 	Desert: "#e3cf8a",
 }
-const CELL = 24
+const CELL = 22
 
 type Layer = "biome" | "elevation"
 
-// Viridis stops: perceptually even, so equal height steps look equally different.
 const HEAT: [number, number, number][] = [
 	[68, 1, 84],
 	[59, 82, 139],

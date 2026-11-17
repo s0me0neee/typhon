@@ -8,4 +8,20 @@ export type Terrain = { biome: Biome, elevation: number, };
 
 export type World = { cells: Array<LandCell>, width: number, height: number, };
 
-export type WorldGenConf = { elevation_range: { start: number, end: number, }, perlin_noise_seed: number, octaves: number, frequency: number, persistence: number, };
+export type WorldGenConf = { 
+/**
+ * range of min and max elevation
+ */
+elevation_range: { start: number, end: number, }, perlin_noise_seed: number, 
+/**
+ * number of noise layers
+ */
+octaves: number, 
+/**
+ * the amount of increase in amp per octave
+ */
+frequency: number, 
+/**
+ * lower makes smoother
+ */
+persistence: number, };

@@ -33,9 +33,10 @@ pub(crate) struct LandCell {
 
 impl LandCell {
     fn new(u: u32, v: u32) -> LandCell {
-        let biome = Biome::iter()
-            .nth(rand::random_range(0..Biome::iter().len()))
-            .unwrap();
+        // let biome = Biome::iter()
+        //     .nth(rand::random_range(0..Biome::iter().len()))
+        //     .unwrap();
+        let biome = Biome::Plain;
         let terrain = Terrain {
             biome,
             elevation: 0.0,
@@ -133,23 +134,15 @@ impl World {
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = ts_file!())]
 pub(crate) struct WorldGenConf {
+    /// range of min and max elevation
     pub(crate) elevation_range: Range<f64>,
     pub(crate) perlin_noise_seed: u32,
+    /// number of noise layers
     pub(crate) octaves: usize,
+    /// the amount of increase in amp per octave
     pub(crate) frequency: f64,
+    /// lower makes smoother
     pub(crate) persistence: f64,
-}
-
-impl Default for WorldGenConf {
-    fn default() -> Self {
-        WorldGenConf {
-            elevation_range: -30.0..210.0,
-            perlin_noise_seed: 1,
-            octaves: 4,
-            frequency: 0.05,
-            persistence: 0.5,
-        }
-    }
 }
 
 fn world_gen(world: &mut World, conf: &WorldGenConf) -> Result<()> {
@@ -165,17 +158,41 @@ fn world_gen(world: &mut World, conf: &WorldGenConf) -> Result<()> {
     for v in 0..world.height {
         for u in 0..world.width {
             let px = u as f64 + 0.5 * (v % 2) as f64;
-            let py = v as f64 * 3f64.sqrt() / 2.0;
+            let py = v as f64 * 3f64.sqrt() / 2.0 * (w / world.height as f64);
             let theta = TAU * px / w;
             let n = fbm
                 .get([radius * theta.cos(), radius * theta.sin(), py])
                 .clamp(-1.0, 1.0);
 
-            let t = ((n + 1.0) / 2.0).powf(0.8);
+            let t = ((n + 1.0) / 2.0).powf(1.0);
             let i = world.index((u, v));
             world.cells[i].terrain.elevation =
                 (r.start + t * (r.end - r.start)) as f32;
         }
+    }
+
+    let mut elevations: Vec<f32> =
+        world.cells.iter().map(|c| c.terrain.elevation).collect();
+    elevations.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let qot = |ratio: f64| {
+        elevations[((elevations.len() - 1) as f64 * ratio) as usize]
+    };
+
+    let water = qot(0.42);
+    let plain = qot(0.78);
+    let wood = qot(0.92);
+
+    for cell in &mut world.cells {
+        let e = cell.terrain.elevation;
+        cell.terrain.biome = if e < water {
+            Biome::Water
+        } else if e < plain {
+            Biome::Plain
+        } else if e < wood {
+            Biome::Wood
+        } else {
+            Biome::Hill
+        };
     }
 
     Ok(())
@@ -183,7 +200,13 @@ fn world_gen(world: &mut World, conf: &WorldGenConf) -> Result<()> {
 
 #[test]
 fn world_gen_test() -> Result<()> {
-    let conf = WorldGenConf::default();
+    let conf = WorldGenConf {
+        perlin_noise_seed: rand::random(),
+        elevation_range: -30.0..210.0,
+        octaves: 4,
+        frequency: 0.05,
+        persistence: 0.5,
+    };
     let world = World::new(30, 15, &conf)?;
     let r = &conf.elevation_range;
     for c in &world.cells {

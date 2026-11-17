@@ -45,7 +45,10 @@ async fn main() -> Result<()> {
 
     let conf = terrain::WorldGenConf {
         perlin_noise_seed: rand::random(),
-        ..Default::default()
+        elevation_range: -30.0..210.0,
+        octaves: 4,
+        frequency: 0.06,
+        persistence: 0.6,
     };
     info!(seed = conf.perlin_noise_seed, "generating world");
     let world = terrain::World::new(80, 45, &conf)?;
