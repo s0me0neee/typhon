@@ -31,7 +31,20 @@ const COLOR: Record<Biome, string> = {
 	Hill: "#a08a62",
 	Desert: "#e3cf8a",
 }
-const CELL = 22
+// Pointy-top hexes: odd rows shift half a hex right, rows are 3/4 of a hex height apart.
+const HEX_W = 8
+const HEX_R = HEX_W / Math.sqrt(3)
+const ROW_H = HEX_R * 1.5
+const HEX_CORNERS = Array.from({ length: 6 }, (_, k) => {
+	const a = (Math.PI / 3) * k - Math.PI / 2
+	return [HEX_R * Math.cos(a), HEX_R * Math.sin(a)] as const
+})
+
+function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
+	ctx.beginPath()
+	for (const [dx, dy] of HEX_CORNERS) ctx.lineTo(cx + dx, cy + dy)
+	ctx.closePath()
+}
 
 type Layer = "biome" | "elevation"
 
@@ -65,28 +78,37 @@ function elevationBounds(world: World): [number, number] {
 function Map({ world, layer }: { world: World; layer: Layer }) {
 	const ref = useRef<HTMLCanvasElement>(null)
 	const [lo, hi] = elevationBounds(world)
+	const cssW = world.width * HEX_W + HEX_W / 2
+	const cssH = (world.height - 1) * ROW_H + HEX_R * 2
+	const dpr = window.devicePixelRatio || 1
 	useEffect(() => {
 		const canvas = ref.current!
 		const ctx = canvas.getContext("2d")!
-		ctx.clearRect(0, 0, canvas.width, canvas.height)
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+		ctx.clearRect(0, 0, cssW, cssH)
+		ctx.lineWidth = 0.6
 		for (const c of world.cells) {
-			const x = c.u * CELL + (c.v % 2) * (CELL / 2) + CELL / 2
-			const y = c.v * CELL + CELL / 2
-			ctx.beginPath()
-			ctx.arc(x, y, CELL / 2 - 1, 0, Math.PI * 2)
-			ctx.fillStyle =
+			const cx = c.u * HEX_W + (c.v % 2) * (HEX_W / 2) + HEX_W / 2
+			const cy = c.v * ROW_H + HEX_R
+			const color =
 				layer === "biome"
 					? COLOR[c.terrain.biome]
 					: heat((c.terrain.elevation - lo) / (hi - lo || 1))
+			hexPath(ctx, cx, cy)
+			ctx.fillStyle = color
 			ctx.fill()
+			// Same-colour outline hides the anti-aliasing hairlines between neighbours.
+			ctx.strokeStyle = color
+			ctx.stroke()
 		}
-	}, [world, layer])
+	}, [world, layer, dpr])
 	return (
 		<div>
 			<canvas
 				ref={ref}
-				width={world.width * CELL + CELL / 2}
-				height={world.height * CELL}
+				width={Math.ceil(cssW * dpr)}
+				height={Math.ceil(cssH * dpr)}
+				style={{ width: `${cssW}px`, height: `${cssH}px`, display: "block" }}
 			/>
 			{layer === "elevation" && <Legend lo={lo} hi={hi} />}
 		</div>
