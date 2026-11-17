@@ -11,7 +11,6 @@ type Conf = { axum_port: number; elysia_port: number }
 const elysia_port = (TOML.parse(await conf.text()) as Conf).elysia_port
 const axum_port = (TOML.parse(await conf.text()) as Conf).axum_port
 
-const axum_path = cwd + "/typhon-server"
 const elysia_path = cwd + "/typhon"
 const ts_binding_export_dir = cwd + "/typhon/bindings"
 const log_level = process.env.LOG_LEVEL
@@ -69,12 +68,9 @@ await Promise.race([
 	}),
 ])
 
-const elysia = Bun.spawn(
-	["bun", "run", `${elysia_path}/src/main.ts`, axum_port.toString()],
-	{
-		cwd,
-		env: { ...process.env, PORT: elysia_port.toString(), ...bun_log },
-		stdout: "inherit",
-		stderr: "inherit",
-	},
-)
+Bun.spawn(["bun", "run", `${elysia_path}/src/main.ts`, axum_port.toString()], {
+	cwd,
+	env: { ...process.env, PORT: elysia_port.toString(), ...bun_log },
+	stdout: "inherit",
+	stderr: "inherit",
+})

@@ -7,3 +7,5 @@ export type LandCell = { terrain: Terrain, u: number, v: number, };
 export type Terrain = { biome: Biome, elevation: number, };
 
 export type World = { cells: Array<LandCell>, width: number, height: number, };
+
+export type WorldGenConf = { elevation_range: { start: number, end: number, }, perlin_noise_seed: number, perlin_noise_layers: Array<number>, };

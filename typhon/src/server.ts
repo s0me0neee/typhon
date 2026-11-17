@@ -6,6 +6,8 @@ export function startServer() {
 	new Elysia()
 		.get("/", page)
 		.get("/api/world", () => fetch(axum("/view/world")))
+		.get("/api/status", () => fetch(axum("/view/status")))
+		.post("/api/step", () => fetch(axum("/step"), { method: "POST" }))
 		.listen(elysia_port, (s) =>
 			log.info(
 				{ url: `http://localhost:${s.port}` },
