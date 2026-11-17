@@ -1,7 +1,7 @@
 import { render } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
 import type { Status } from "../../bindings/simulation"
-import type { Biome, World } from "../../bindings/terrain"
+import type { Biome, LandCell, World } from "../../bindings/terrain"
 
 function StepButton() {
 	const [status, setStatus] = useState<Status>()
@@ -46,38 +46,56 @@ function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
 	ctx.closePath()
 }
 
-type Layer = "biome" | "elevation"
+type Layer = "biome" | "elevation" | "temp"
+type Ramp = [number, number, number][]
 
-const HEAT: [number, number, number][] = [
+// Viridis: perceptually even, so equal height steps look equally different.
+const VIRIDIS: Ramp = [
 	[68, 1, 84],
 	[59, 82, 139],
 	[33, 145, 140],
 	[94, 201, 98],
 	[253, 231, 37],
 ]
+// Sequential blue → purple → red, built in OKLCH with lightness falling in equal steps (0.90 → 0.38).
+const THERMAL: Ramp = [
+	[203, 224, 252],
+	[179, 189, 253],
+	[179, 147, 236],
+	[184, 103, 196],
+	[182, 59, 138],
+	[166, 6, 71],
+	[128, 9, 2],
+]
 
-function heat(t: number): string {
-	const p = Math.min(Math.max(t, 0), 1) * (HEAT.length - 1)
-	const i = Math.min(Math.floor(p), HEAT.length - 2)
+const SCALAR: Record<Exclude<Layer, "biome">, { ramp: Ramp; unit: string; value: (c: LandCell) => number }> = {
+	elevation: { ramp: VIRIDIS, unit: "", value: (c) => c.terrain.elevation },
+	temp: { ramp: THERMAL, unit: "°C", value: (c) => c.temp },
+}
+
+function rampColor(ramp: Ramp, t: number): string {
+	const p = Math.min(Math.max(t, 0), 1) * (ramp.length - 1)
+	const i = Math.min(Math.floor(p), ramp.length - 2)
 	const f = p - i
-	const [a, b] = [HEAT[i]!, HEAT[i + 1]!]
+	const [a, b] = [ramp[i]!, ramp[i + 1]!]
 	const mix = (k: number) => Math.round(a[k]! + (b[k]! - a[k]!) * f)
 	return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`
 }
 
-function elevationBounds(world: World): [number, number] {
+function bounds(world: World, value: (c: LandCell) => number): [number, number] {
 	let lo = Infinity
 	let hi = -Infinity
 	for (const c of world.cells) {
-		lo = Math.min(lo, c.terrain.elevation)
-		hi = Math.max(hi, c.terrain.elevation)
+		lo = Math.min(lo, value(c))
+		hi = Math.max(hi, value(c))
 	}
 	return [lo, hi]
 }
 
 function Map({ world, layer }: { world: World; layer: Layer }) {
 	const ref = useRef<HTMLCanvasElement>(null)
-	const [lo, hi] = elevationBounds(world)
+	const scalar = layer === "biome" ? undefined : SCALAR[layer]
+	const [lo, hi] = scalar ? bounds(world, scalar.value) : [0, 0]
 	const cssW = world.width * HEX_W + HEX_W / 2
 	const cssH = (world.height - 1) * ROW_H + HEX_R * 2
 	const dpr = window.devicePixelRatio || 1
@@ -90,10 +108,9 @@ function Map({ world, layer }: { world: World; layer: Layer }) {
 		for (const c of world.cells) {
 			const cx = c.u * HEX_W + (c.v % 2) * (HEX_W / 2) + HEX_W / 2
 			const cy = c.v * ROW_H + HEX_R
-			const color =
-				layer === "biome"
-					? COLOR[c.terrain.biome]
-					: heat((c.terrain.elevation - lo) / (hi - lo || 1))
+			const color = scalar
+				? rampColor(scalar.ramp, (scalar.value(c) - lo) / (hi - lo || 1))
+				: COLOR[c.terrain.biome]
 			hexPath(ctx, cx, cy)
 			ctx.fillStyle = color
 			ctx.fill()
@@ -110,18 +127,18 @@ function Map({ world, layer }: { world: World; layer: Layer }) {
 				height={Math.ceil(cssH * dpr)}
 				style={{ width: `${cssW}px`, height: `${cssH}px`, display: "block" }}
 			/>
-			{layer === "elevation" && <Legend lo={lo} hi={hi} />}
+			{scalar && <Legend ramp={scalar.ramp} unit={scalar.unit} lo={lo} hi={hi} />}
 		</div>
 	)
 }
 
-function Legend({ lo, hi }: { lo: number; hi: number }) {
-	const stops = HEAT.map(([r, g, b]) => `rgb(${r}, ${g}, ${b})`).join(", ")
+function Legend({ ramp, unit, lo, hi }: { ramp: Ramp; unit: string; lo: number; hi: number }) {
+	const stops = ramp.map(([r, g, b]) => `rgb(${r}, ${g}, ${b})`).join(", ")
 	return (
 		<div
 			style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}
 		>
-			<span>{lo.toFixed(0)}</span>
+			<span>{lo.toFixed(0)}{unit}</span>
 			<div
 				style={{
 					width: 200,
@@ -129,7 +146,7 @@ function Legend({ lo, hi }: { lo: number; hi: number }) {
 					background: `linear-gradient(to right, ${stops})`,
 				}}
 			/>
-			<span>{hi.toFixed(0)}</span>
+			<span>{hi.toFixed(0)}{unit}</span>
 		</div>
 	)
 }
@@ -143,7 +160,7 @@ function LayerToggle({
 }) {
 	return (
 		<span>
-			{(["biome", "elevation"] as const).map((l) => (
+			{(["biome", "elevation", "temp"] as const).map((l) => (
 				<label key={l} style={{ marginLeft: 12 }}>
 					<input
 						type="radio"

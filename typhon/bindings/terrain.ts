@@ -2,7 +2,7 @@
 
 export type Biome = "Plain" | "Water" | "Wood" | "Hill" | "Desert";
 
-export type LandCell = { terrain: Terrain, u: number, v: number, };
+export type LandCell = { terrain: Terrain, temp: number, u: number, v: number, };
 
 export type Terrain = { biome: Biome, elevation: number, };
 
@@ -16,12 +16,24 @@ elevation_range: { start: number, end: number, }, perlin_noise_seed: number,
 /**
  * number of noise layers
  */
-octaves: number, 
+perlin_octaves: number, 
 /**
  * the amount of increase in amp per octave
  */
-frequency: number, 
+perlin_frequency: number, 
 /**
  * lower makes smoother
  */
-persistence: number, };
+perlin_persistence: number, 
+/**
+ * temp at equator
+ */
+max_temp: number, 
+/**
+ * temp at polls
+ */
+min_temp: number, 
+/**
+ * how much colder the highest peak is than sea level
+ */
+elevation_temp_drop: number, };

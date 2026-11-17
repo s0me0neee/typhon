@@ -11,6 +11,7 @@ use tracing_subscriber::EnvFilter;
 
 mod simulation;
 mod terrain;
+mod world_gen;
 
 use simulation::{Simulation, Status};
 
@@ -45,13 +46,16 @@ async fn main() -> Result<()> {
 
     let conf = terrain::WorldGenConf {
         perlin_noise_seed: rand::random(),
-        elevation_range: -30.0..210.0,
-        octaves: 6,
-        frequency: 0.018,
-        persistence: 0.55,
+        elevation_range: -50.0..3100.0,
+        perlin_octaves: 6,
+        perlin_frequency: 0.018,
+        perlin_persistence: 0.55,
+        min_temp: -30.0,
+        max_temp: 35.0,
+        elevation_temp_drop: 40.0,
     };
     info!(seed = conf.perlin_noise_seed, "generating world");
-    let world = terrain::World::new(220, 125, &conf)?;
+    let world = terrain::World::new(190, 117, &conf)?;
     let sim: SharedSim = Arc::new(RwLock::new(Simulation::new(world)));
 
     let api = Router::new()
