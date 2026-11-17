@@ -1,8 +1,8 @@
 use crate::ts_file;
 use anyhow::{Result, bail};
-use noise::{NoiseFn, Perlin};
+use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 use serde::Serialize;
-use std::{fmt::Display, ops::Range};
+use std::{f64::consts::TAU, fmt::Display, ops::Range};
 use strum::{EnumIter, IntoEnumIterator};
 use ts_rs::TS;
 
@@ -96,7 +96,7 @@ impl Display for World {
 }
 
 impl World {
-    pub fn new(w: u32, h: u32) -> Result<World> {
+    pub fn new(w: u32, h: u32, conf: &WorldGenConf) -> Result<World> {
         if w < 2 || w % 2 != 0 {
             bail!("World width have to be at least 2 and even, got: {}", w);
         }
@@ -119,12 +119,6 @@ impl World {
             height: h,
         };
 
-        let conf = WorldGenConf {
-            elevation_range: -30.0..210.0,
-            perlin_noise_seed: 1,
-            perlin_noise_layers: &[0.03, 0.08, 0.1],
-        };
-
         world_gen(&mut world, conf)?;
 
         Ok(world)
@@ -138,36 +132,49 @@ impl World {
 // ops::Range because serde and ts-rs only support this
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = ts_file!())]
-pub(crate) struct WorldGenConf<'a> {
+pub(crate) struct WorldGenConf {
     pub(crate) elevation_range: Range<f64>,
     pub(crate) perlin_noise_seed: u32,
-    pub(crate) perlin_noise_layers: &'a [f32],
+    pub(crate) octaves: usize,
+    pub(crate) frequency: f64,
+    pub(crate) persistence: f64,
 }
 
-fn world_gen(world: &mut World, conf: WorldGenConf) -> Result<()> {
-    let perlin = Perlin::new(conf.perlin_noise_seed);
-
-    let rescale =
-        |r: &Range<f64>, n: f64| -> f64 { r.start + n * (r.end - r.start) };
-
-    for scale in conf.perlin_noise_layers {
-        let mut noise: Vec<Vec<f64>> =
-            Vec::with_capacity(world.height as usize);
-        for y in 0..world.height {
-            let mut v = Vec::with_capacity(world.width as usize);
-            for x in 0..world.width {
-                let val = perlin
-                    .get([x as f64 * *scale as f64, y as f64 * *scale as f64]);
-                v.push((val + 1.0) / 2.0);
-            }
-            noise.push(v);
+impl Default for WorldGenConf {
+    fn default() -> Self {
+        WorldGenConf {
+            elevation_range: -30.0..210.0,
+            perlin_noise_seed: 1,
+            octaves: 4,
+            frequency: 0.05,
+            persistence: 0.5,
         }
-        for (v, row) in noise.iter().enumerate() {
-            for (u, &val) in row.iter().enumerate() {
-                let i = world.index((u as u32, v as u32));
-                world.cells[i].terrain.elevation =
-                    rescale(&conf.elevation_range, val) as f32;
-            }
+    }
+}
+
+fn world_gen(world: &mut World, conf: &WorldGenConf) -> Result<()> {
+    let fbm = Fbm::<Perlin>::new(conf.perlin_noise_seed)
+        .set_octaves(conf.octaves)
+        .set_frequency(conf.frequency)
+        .set_persistence(conf.persistence);
+    let w = world.width as f64;
+
+    let radius = w / TAU;
+    let r = &conf.elevation_range;
+
+    for v in 0..world.height {
+        for u in 0..world.width {
+            let px = u as f64 + 0.5 * (v % 2) as f64;
+            let py = v as f64 * 3f64.sqrt() / 2.0;
+            let theta = TAU * px / w;
+            let n = fbm
+                .get([radius * theta.cos(), radius * theta.sin(), py])
+                .clamp(-1.0, 1.0);
+
+            let t = ((n + 1.0) / 2.0).powf(0.8);
+            let i = world.index((u, v));
+            world.cells[i].terrain.elevation =
+                (r.start + t * (r.end - r.start)) as f32;
         }
     }
 
@@ -176,12 +183,12 @@ fn world_gen(world: &mut World, conf: WorldGenConf) -> Result<()> {
 
 #[test]
 fn world_gen_test() -> Result<()> {
-    let mut world = World::new(30, 15)?;
-    let conf = WorldGenConf {
-        elevation_range: -30.0..210.0,
-        perlin_noise_seed: 1,
-        perlin_noise_layers: &[0.1, 0.2, 0.3],
-    };
-    world_gen(&mut world, conf)?;
+    let conf = WorldGenConf::default();
+    let world = World::new(30, 15, &conf)?;
+    let r = &conf.elevation_range;
+    for c in &world.cells {
+        let e = c.terrain.elevation as f64;
+        assert!(r.start <= e && e <= r.end, "elevation {e} outside {r:?}");
+    }
     Ok(())
 }

@@ -43,7 +43,12 @@ async fn main() -> Result<()> {
     let port = env::var("PORT")?;
     let elysia_port = env::args().nth(1).unwrap_or_default();
 
-    let world = terrain::World::new(70, 41)?;
+    let conf = terrain::WorldGenConf {
+        perlin_noise_seed: rand::random(),
+        ..Default::default()
+    };
+    info!(seed = conf.perlin_noise_seed, "generating world");
+    let world = terrain::World::new(80, 45, &conf)?;
     let sim: SharedSim = Arc::new(RwLock::new(Simulation::new(world)));
 
     let api = Router::new()
