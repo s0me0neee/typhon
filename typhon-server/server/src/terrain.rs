@@ -3,10 +3,11 @@ use anyhow::{Result, bail};
 use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 use serde::Serialize;
 use std::{f64::consts::TAU, fmt::Display, ops::Range};
-use strum::{EnumIter, IntoEnumIterator};
 use ts_rs::TS;
 
-#[derive(Debug, Clone, Copy, EnumIter, TS, Serialize)]
+// credits to: https://www.redblobgames.com/maps/terrain-from-noise/
+
+#[derive(Debug, Clone, Copy, strum::EnumIter, TS, Serialize)]
 #[ts(export, export_to = ts_file!())]
 pub(crate) enum Biome {
     Plain,
@@ -33,9 +34,6 @@ pub(crate) struct LandCell {
 
 impl LandCell {
     fn new(u: u32, v: u32) -> LandCell {
-        // let biome = Biome::iter()
-        //     .nth(rand::random_range(0..Biome::iter().len()))
-        //     .unwrap();
         let biome = Biome::Plain;
         let terrain = Terrain {
             biome,
@@ -153,22 +151,32 @@ fn world_gen(world: &mut World, conf: &WorldGenConf) -> Result<()> {
     let w = world.width as f64;
 
     let radius = w / TAU;
-    let r = &conf.elevation_range;
+    let elevation_range = &conf.elevation_range;
 
+    let mut noise = Vec::with_capacity(world.cells.len());
     for v in 0..world.height {
         for u in 0..world.width {
             let px = u as f64 + 0.5 * (v % 2) as f64;
-            let py = v as f64 * 3f64.sqrt() / 2.0 * (w / world.height as f64);
+            let py = v as f64 * 3f64.sqrt() / 2.0;
             let theta = TAU * px / w;
-            let n = fbm
-                .get([radius * theta.cos(), radius * theta.sin(), py])
-                .clamp(-1.0, 1.0);
-
-            let t = ((n + 1.0) / 2.0).powf(1.0);
-            let i = world.index((u, v));
-            world.cells[i].terrain.elevation =
-                (r.start + t * (r.end - r.start)) as f32;
+            noise.push(fbm.get([
+                radius * theta.cos(),
+                radius * theta.sin(),
+                py,
+            ]));
         }
+    }
+
+    let (lo, hi) = noise
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(lo, hi), &n| (lo.min(n), hi.max(n)));
+    let span = (hi - lo).max(f64::EPSILON);
+
+    for (cell, n) in world.cells.iter_mut().zip(noise) {
+        let t = ((n - lo) / span).powf(1.0);
+        cell.terrain.elevation = (elevation_range.start
+            + t * (elevation_range.end - elevation_range.start))
+            as f32;
     }
 
     let mut elevations: Vec<f32> =
